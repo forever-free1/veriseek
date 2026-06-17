@@ -1,0 +1,30 @@
+# Runtime and training artifacts
+models/
+outputs/
+data/processed/
+*.parquet
+*.jsonl
+*.log
+*.pid
+
+# Local caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local notes and publication drafts not shipped in the GitHub code repo
+blog/
+veriseek_plan.md
+VERISEEK_PLAN_CN.md
+
+# Large/generated image formats
+*.tiff
+*.tif
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

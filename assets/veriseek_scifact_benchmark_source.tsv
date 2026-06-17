@@ -1,0 +1,7 @@
+model	training_path	checkpoint	label_accuracy	evidence_f1	format_success_rate	unsupported_answer_rate
+VeriSeek-SFT	SFT	final	0.780000	0.376230	0.993333	0.466667
+Old SFT+RL	SFT+RL old	final	0.746667	0.330763	0.993333	0.566667
+Gated n=4 SFT+RL	SFT+RL gated n=4	50	0.783333	0.389161	0.993333	0.436667
+Gated n=4 SFT+RL	SFT+RL gated n=4	100	0.790000	0.400147	0.990000	0.420000
+Gated n=4 SFT+RL	SFT+RL gated n=4	150	0.790000	0.405251	0.990000	0.416667
+Gated n=4 SFT+RL	SFT+RL gated n=4	200	0.793333	0.405705	0.990000	0.413333
