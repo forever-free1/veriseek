@@ -4,7 +4,6 @@ from pathlib import Path
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-from matplotlib.patches import FancyBboxPatch
 
 
 PALETTE = {
@@ -35,22 +34,6 @@ def save_publication_figure(fig, output_prefix: Path):
     fig.savefig(output_prefix.with_suffix(".tiff"), dpi=600, bbox_inches="tight")
 
 
-def draw_card(ax, xy, width, height, title, lines, color, line_gap=0.075):
-    card = FancyBboxPatch(
-        xy,
-        width,
-        height,
-        boxstyle="round,pad=0.018,rounding_size=0.025",
-        linewidth=0.8,
-        edgecolor=color,
-        facecolor="#F8FAFC",
-    )
-    ax.add_patch(card)
-    ax.text(xy[0] + 0.04, xy[1] + height - 0.08, title, ha="left", va="top", fontsize=7.5, fontweight="bold")
-    for idx, line in enumerate(lines):
-        ax.text(xy[0] + 0.04, xy[1] + height - 0.16 - idx * line_gap, line, ha="left", va="top", fontsize=6.7)
-
-
 def main():
     parser = argparse.ArgumentParser(description="Plot VeriSeek public SciFact benchmark summary.")
     parser.add_argument(
@@ -71,11 +54,6 @@ def main():
     answer = [as_float(row, "answer_accuracy") for row in rows]
     evidence = [as_float(row, "evidence_f1") for row in rows]
 
-    sft = next(row for row in rows if row["training_path"] == "SFT")
-    sft_rl = next(row for row in rows if row["training_path"] == "SFT+RL")
-    delta_acc = as_float(sft_rl, "answer_accuracy") - as_float(sft, "answer_accuracy")
-    delta_ev = as_float(sft_rl, "evidence_f1") - as_float(sft, "evidence_f1")
-
     mpl.rcParams.update(
         {
             "font.family": "sans-serif",
@@ -92,11 +70,7 @@ def main():
         }
     )
 
-    fig = plt.figure(figsize=(7.4, 3.65), constrained_layout=True)
-    gs = fig.add_gridspec(2, 3, width_ratios=[1.35, 1.15, 1.0], height_ratios=[1, 1])
-    ax_a = fig.add_subplot(gs[:, 0])
-    ax_b = fig.add_subplot(gs[:, 1])
-    ax_c = fig.add_subplot(gs[:, 2])
+    fig, (ax_a, ax_b) = plt.subplots(1, 2, figsize=(5.8, 3.2), constrained_layout=True)
 
     x = range(len(labels))
     ax_a.bar(x, answer, color=colors, width=0.64)
@@ -127,50 +101,11 @@ def main():
         label = f"{value:.3f}" if value > 0 else "n/a"
         ax_b.text(idx, value + (0.015 if value > 0 else 0.018), label, ha="center", va="bottom", fontsize=6.5)
 
-    ax_c.axis("off")
-    ax_c.text(
-        0.0,
-        0.95,
-        "Benchmark",
-        ha="left",
-        va="top",
-        fontsize=8,
-        fontweight="bold",
-        color=PALETTE["text"],
-    )
-    draw_card(
-        ax_c,
-        (0.0, 0.65),
-        0.96,
-        0.24,
-        "SciFact dev",
-        ["n = 300 claims"],
-        PALETTE["grid"],
-    )
-    draw_card(
-        ax_c,
-        (0.0, 0.33),
-        0.96,
-        0.25,
-        "VeriSeek SFT+RL",
-        [f"+{delta_acc:.3f} answer acc", f"+{delta_ev:.3f} evidence F1", "vs. SFT baseline"],
-        PALETTE["sft_rl"],
-    )
-    ax_c.text(
-        0.0,
-        0.08,
-        "Reward: format gate + label correctness\n+ evidence overlap + concise evidence.",
-        ha="left",
-        va="bottom",
-        fontsize=6.8,
-        color="#4B5563",
-    )
-
-    for label, ax in zip(["a", "b", "c"], [ax_a, ax_b, ax_c]):
+    for label, ax in zip(["a", "b"], [ax_a, ax_b]):
         ax.text(-0.16, 1.04, label, transform=ax.transAxes, fontweight="bold", fontsize=9)
 
     fig.suptitle(
-        "VeriSeek SFT+RL gives the strongest evidence-grounded SciFact QA result",
+        "VeriSeek SFT+RL improves answer accuracy and evidence grounding on SciFact dev (n = 300)",
         x=0.01,
         ha="left",
         fontsize=9.5,
