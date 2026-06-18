@@ -1,19 +1,10 @@
 # VeriSeek Reward Design
 
-VeriSeek uses a deterministic reward. It does not call embedding models or LLM judges.
+VeriSeek uses deterministic rewards. It does not call embedding models or LLM judges.
 
-## Formula
+## SciFact Reward
 
-QASPER currently keeps the original weighted formula:
-
-```text
-R = 0.45 * R_answer
-  + 0.35 * R_evidence
-  + 0.15 * R_format
-  + 0.05 * R_conciseness
-```
-
-SciFact uses a gated reward after the first SFT+RL run showed evidence of reward hacking:
+SciFact uses a gated evidence-aware reward:
 
 ```text
 if format is invalid:
@@ -31,7 +22,20 @@ otherwise:
         R = min(R, 0.25)
 ```
 
-The gated SciFact reward is intended to prevent the model from earning high reward through correct labels and valid XML while providing weak or empty evidence.
+The hard format gate makes the answer/evidence protocol part of the objective. The evidence cap prevents high reward when an answerable claim has a correct label but weak or missing evidence. `NOT_ENOUGH_INFO` examples are handled separately because concise or empty evidence can be valid when the gold label is unsupported.
+
+The public VeriSeek SFT+RL run uses `AGENT_GRPO_N=4`, so each prompt has multiple sampled responses for group-relative optimization.
+
+## QASPER Reward
+
+QASPER keeps the weighted deterministic reward:
+
+```text
+R = 0.45 * R_answer
+  + 0.35 * R_evidence
+  + 0.15 * R_format
+  + 0.05 * R_conciseness
+```
 
 ## Components
 
@@ -51,11 +55,16 @@ The gated SciFact reward is intended to prevent the model from earning high rewa
 - 1.0 when both `<answer>` and `<evidence>` blocks exist.
 - 0.5 when only one block exists.
 - 0.0 otherwise.
-- For SciFact gated reward, format is a hard gate rather than a weighted positive reward.
+- For SciFact, format is a hard gate rather than a weighted positive reward.
 
 `R_conciseness`
 
 - 1.0 when the evidence block contains 1-5 items.
+- 0.0 otherwise.
+
+`R_empty_or_concise_evidence`
+
+- 1.0 when a `NOT_ENOUGH_INFO` answer has empty evidence or a concise evidence block.
 - 0.0 otherwise.
 
 ## Supported Data Sources

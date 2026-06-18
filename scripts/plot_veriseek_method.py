@@ -83,7 +83,7 @@ def main():
     box(ax, (0.04, 0.56), 0.18, 0.18, "Qwen3-4B\nThinking base", "#E5E7EB")
     box(ax, (0.33, 0.74), 0.18, 0.16, "SFT\nimitation", "#D6E3F3")
     box(ax, (0.33, 0.47), 0.18, 0.16, "RL-only\nreward from base", "#D9EEE9")
-    box(ax, (0.33, 0.20), 0.18, 0.16, "SFT + RL\ngated n=4", "#CBE7E1")
+    box(ax, (0.33, 0.20), 0.18, 0.16, "VeriSeek\nSFT+RL", "#CBE7E1")
 
     box(ax, (0.64, 0.58), 0.20, 0.20, "Deterministic\nreward\nanswer + evidence", "#F8FAFC")
     box(ax, (0.64, 0.25), 0.20, 0.20, "Strict SciFact\nevaluation\nXML + evidence F1", "#F8FAFC")
@@ -93,7 +93,7 @@ def main():
         (0.86, 0.43),
         0.12,
         0.22,
-        "Best:\nstep 200\nAcc 0.793\nEvF1 0.406",
+        "Best:\nVeriSeek\nSFT+RL\nAcc 0.793\nEvF1 0.406",
         "#E8F4F1",
         edgecolor=PALETTE["rl"],
         fontsize=7.2,

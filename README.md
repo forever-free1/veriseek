@@ -2,59 +2,100 @@
 
 [中文说明](README_CN.md)
 
-VeriSeek is a minimal, reproducible project for training and evaluating evidence-grounded scientific QA agents. The public/default base model is:
+VeriSeek is a compact, reproducible project for training scientific QA models to answer with auditable evidence. The public/default base model is:
 
 ```text
 Qwen/Qwen3-4B-Thinking-2507
 ```
 
-Local default path:
+The local default path is:
 
 ```text
 models/Qwen3-4B-Thinking-2507
 ```
 
-Starting from the same compact reasoning model, VeriSeek compares whether scientific evidence grounding is better learned by supervised imitation, evidence-aware reward optimization, or a two-stage SFT+RL pipeline.
+Starting from the same compact reasoning model, VeriSeek asks whether scientific evidence grounding is better learned by supervised imitation, evidence-aware reward optimization, or a two-stage SFT+RL pipeline.
 
-## Method Overview
+## Method
 
 ![VeriSeek method overview](assets/veriseek_method_overview.svg)
 
+VeriSeek keeps the training stack small on purpose:
+
+- no trainer rewrite;
+- no rollout redesign;
+- no search/visit protocol changes;
+- no PDF, figure, table, or multimodal parsing;
+- no embedding similarity reward;
+- no LLM-as-a-judge reward.
+
+The model is trained and evaluated through a deterministic answer/evidence protocol:
+
+```text
+<answer>
+SUPPORTS / REFUTES / NOT_ENOUGH_INFO
+</answer>
+
+<evidence>
+[1] evidence sentence
+</evidence>
+```
+
 ## Main Result
 
-On SciFact dev, the best VeriSeek checkpoint is the gated n=4 SFT+RL run at `global_step_200`. It improves over the SFT baseline on both label accuracy and evidence F1:
+On SciFact dev (`n = 300`), the final public model, **VeriSeek SFT+RL**, gives the strongest answer accuracy and evidence grounding among the four training paths.
 
 ![VeriSeek SciFact benchmark](assets/veriseek_scifact_benchmark.svg)
 
-| Model | Training Path | SciFact Acc | SciFact Evidence F1 | Format Success | Unsupported Rate |
-|---|---|---:|---:|---:|---:|
-| VeriSeek-SFT | SFT | 0.780 | 0.376 | 0.993 | 0.467 |
-| Old VeriSeek-SFT-RL | SFT+RL, n=1 reward | 0.747 | 0.331 | 0.993 | 0.567 |
-| VeriSeek-SFT-RL | gated SFT+RL, n=4, step 50 | 0.783 | 0.389 | 0.993 | 0.437 |
-| VeriSeek-SFT-RL | gated SFT+RL, n=4, step 100 | 0.790 | 0.400 | 0.990 | 0.420 |
-| VeriSeek-SFT-RL | gated SFT+RL, n=4, step 150 | 0.790 | 0.405 | 0.990 | 0.417 |
-| VeriSeek-SFT-RL | gated SFT+RL, n=4, step 200 | **0.793** | **0.406** | 0.990 | **0.413** |
+| Model | Training Path | SciFact Answer Acc | SciFact Evidence F1 | Evaluation Note |
+|---|---|---:|---:|---|
+| Qwen3-4B Base | none | 0.553 | n/a | prefix-constrained label diagnostic |
+| VeriSeek RL-only | RL-only | 0.563 | n/a | prefix-constrained label diagnostic |
+| VeriSeek SFT | SFT | 0.780 | 0.376 | strict XML evidence evaluation |
+| VeriSeek SFT+RL | SFT+RL | **0.793** | **0.406** | strict XML evidence evaluation |
 
-Compared with SFT, the step-200 gated n=4 checkpoint gives:
+Compared with the SFT baseline:
 
 ```text
-SciFact Acc:         +0.013
+SciFact Answer Acc: +0.013
 SciFact Evidence F1: +0.029
-Unsupported Rate:    -0.053
+Unsupported Rate: -0.053
 ```
 
-The old SFT+RL run is kept as a negative control: its training reward rose, but the model became too conservative and over-predicted `NOT_ENOUGH_INFO`. The final gated n=4 run fixes that failure mode by making format a hard gate, capping weak-evidence answers, and using four sampled responses per prompt for a real GRPO comparison signal.
+Base and RL-only are included as label-space controls. They do not reliably follow the VeriSeek XML evidence protocol, so their evidence F1 is not reported as a comparable strict grounding score.
 
 ## Training Paths
 
-The project compares four evaluation conditions:
+VeriSeek compares four conditions from the same base model:
 
 - `Qwen3-4B Base`: untrained base model evaluation when possible.
-- `VeriSeek-SFT`: supervised fine-tuning from `Qwen/Qwen3-4B-Thinking-2507`.
-- `VeriSeek-RL`: evidence-aware RL directly from `Qwen/Qwen3-4B-Thinking-2507`.
-- `VeriSeek-SFT-RL`: evidence-aware RL initialized from the VeriSeek-SFT checkpoint.
+- `VeriSeek RL-only`: evidence-aware RL directly from `Qwen/Qwen3-4B-Thinking-2507`.
+- `VeriSeek SFT`: supervised fine-tuning from `Qwen/Qwen3-4B-Thinking-2507`.
+- `VeriSeek SFT+RL`: evidence-aware RL initialized from the VeriSeek SFT checkpoint.
 
-SFT teaches the output format and task behavior. RL-only tests whether deterministic evidence reward can induce evidence-seeking behavior without imitation. SFT+RL tests whether imitation followed by reward optimization gives the best trade-off.
+SFT teaches the model the output protocol and task behavior. RL-only tests whether evidence reward alone can induce the behavior. SFT+RL tests whether imitation followed by reward optimization gives the best trade-off.
+
+## Reward Design
+
+The final SciFact reward is deterministic and evidence-aware:
+
+```text
+if format is invalid:
+    R = 0
+
+if gold is NOT_ENOUGH_INFO:
+    R = 0.80 * R_answer + 0.20 * R_empty_or_concise_evidence
+
+if gold is SUPPORTS or REFUTES and prediction is NOT_ENOUGH_INFO:
+    R = 0.05
+
+otherwise:
+    R = 0.35 * R_answer + 0.55 * R_evidence + 0.10 * R_conciseness
+    if R_evidence < 0.20:
+        R = min(R, 0.25)
+```
+
+The reward uses only label correctness, token-level evidence overlap, output format, and concise evidence. See [docs/reward_design.md](docs/reward_design.md).
 
 ## Repository Map
 
@@ -66,31 +107,8 @@ scripts/train_veriseek_*.sh   SFT, RL-only, and SFT+RL entrypoints
 scripts/eval_gated_checkpoints.sh
 scripts/plot_veriseek_results.py
 docs/                         reward, data, smoke-training, and benchmark notes
-assets/                       benchmark figure and source data
+assets/                       benchmark figures and source tables
 ```
-
-The MVP avoids trainer rewrites, rollout changes, search/visit protocol changes, PDF parsing, figure/table parsing, multimodal inputs, embedding similarity, and LLM-as-a-judge rewards.
-
-## Reward Objective
-
-The first reward version was:
-
-```text
-R = 0.45 * R_answer
-  + 0.35 * R_evidence
-  + 0.15 * R_format
-  + 0.05 * R_conciseness
-```
-
-SciFact now uses a gated deterministic variant after the first SFT+RL run exposed a conservative `NOT_ENOUGH_INFO` failure mode:
-
-- invalid format receives zero reward;
-- for `SUPPORTS` and `REFUTES`, weak evidence caps the total score;
-- predicting `NOT_ENOUGH_INFO` for answerable claims receives only a small reward;
-- `NOT_ENOUGH_INFO` gold examples are rewarded for a correct label plus empty or concise evidence;
-- QASPER keeps the weighted answer/evidence/format/conciseness reward.
-
-See [docs/reward_design.md](docs/reward_design.md).
 
 ## Environment
 
@@ -103,7 +121,7 @@ CUDA 12.8
 2 x NVIDIA A800 80GB
 ```
 
-The 5-step smoke job can run on one GPU. The 200-step gated n=4 run was executed on two A800 GPUs.
+The 5-step smoke job can run on one GPU. The reproducible VeriSeek SFT+RL run used two A800 GPUs.
 
 ## Download The Base Model
 
@@ -136,7 +154,7 @@ python data/prepare_scifact.py \
   --output_dir data/processed/scifact
 ```
 
-Rows are written as parquet records compatible with the existing training stack:
+Each row is written as a parquet record compatible with the existing training stack:
 
 ```json
 {
@@ -171,7 +189,7 @@ Equivalent wrapper:
 bash scripts/remote_smoke_train.sh
 ```
 
-## Reproduce The Gated n=4 SFT+RL Run
+## Reproduce VeriSeek SFT+RL
 
 First prepare an SFT checkpoint. The wrapper uses the upstream SFT trainer and requires SFT-compatible data:
 
@@ -193,8 +211,8 @@ Then run evidence-aware SFT+RL from the SFT checkpoint:
 SFT_MODEL_PATH=$PWD/outputs/veriseek_sft_hf \
 TRAIN_FILE=$PWD/data/processed/scifact/train.parquet \
 VAL_FILE=$PWD/data/processed/scifact/dev.parquet \
-OUTPUT=$PWD/outputs/veriseek_sft_rl_gated_n4 \
-EXPERIMENT_NAME=veriseek_sft_rl_gated_n4 \
+OUTPUT=$PWD/outputs/veriseek_sft_rl \
+EXPERIMENT_NAME=veriseek_sft_rl \
 MAX_STEPS=200 \
 SAVE_FREQ=50 \
 TRAIN_BATCH_SIZE=2 \
@@ -211,33 +229,32 @@ AGENT_GRPO_N=4 \
 bash scripts/train_veriseek_sft_rl.sh
 ```
 
-Expected checkpoints:
+The public result is evaluated from:
 
 ```text
-outputs/veriseek_sft_rl_gated_n4/global_step_50
-outputs/veriseek_sft_rl_gated_n4/global_step_100
-outputs/veriseek_sft_rl_gated_n4/global_step_150
-outputs/veriseek_sft_rl_gated_n4/global_step_200
+outputs/veriseek_sft_rl/global_step_200
 ```
 
-## Evaluate Checkpoints
+## Evaluate The Public Checkpoint
 
 ```bash
-RUN_DIR=$PWD/outputs/veriseek_sft_rl_gated_n4 \
-BENCH_DIR=$PWD/outputs/benchmarks/gated_n4 \
-TMP_PREFIX=$PWD/outputs/tmp_gated_n4_step \
-STEPS="50 100 150 200" \
+RUN_DIR=$PWD/outputs/veriseek_sft_rl \
+BENCH_DIR=$PWD/outputs/benchmarks/veriseek_sft_rl \
+TMP_PREFIX=$PWD/outputs/tmp_veriseek_sft_rl \
+STEPS="200" \
 bash scripts/eval_gated_checkpoints.sh
 ```
 
-This merges each FSDP checkpoint into a temporary Hugging Face directory, generates SciFact dev predictions, computes strict and relaxed metrics, writes component diagnostics, and removes the temporary model directory after each step.
+This merges the FSDP checkpoint into a temporary Hugging Face directory, generates SciFact dev predictions, computes strict and relaxed metrics, writes component diagnostics, and removes the temporary model directory.
 
-## Recreate The Figure
+## Recreate The Figures
 
 ```bash
 python scripts/plot_veriseek_results.py \
   --source assets/veriseek_scifact_benchmark_source.tsv \
   --output_prefix assets/veriseek_scifact_benchmark
+
+python scripts/plot_veriseek_method.py
 ```
 
 Outputs:
@@ -246,7 +263,6 @@ Outputs:
 assets/veriseek_scifact_benchmark.svg
 assets/veriseek_scifact_benchmark.pdf
 assets/veriseek_scifact_benchmark.png
-assets/veriseek_scifact_benchmark.tiff
 assets/veriseek_method_overview.svg
 assets/veriseek_method_overview.pdf
 assets/veriseek_method_overview.png

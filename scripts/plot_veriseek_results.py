@@ -4,15 +4,15 @@ from pathlib import Path
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-from matplotlib.patches import Patch
+from matplotlib.patches import FancyBboxPatch
 
 
 PALETTE = {
-    "sft": "#6B7280",
-    "old": "#C97A5A",
-    "gated": "#2B8C7E",
-    "gated_light": "#B8DCD6",
-    "accent": "#1F4E79",
+    "base": "#A7AFBA",
+    "rl": "#7B9BB8",
+    "sft": "#1F4E79",
+    "sft_rl": "#2B8C7E",
+    "evidence": "#57A99A",
     "grid": "#D9DEE3",
     "text": "#1F2933",
 }
@@ -35,12 +35,28 @@ def save_publication_figure(fig, output_prefix: Path):
     fig.savefig(output_prefix.with_suffix(".tiff"), dpi=600, bbox_inches="tight")
 
 
+def draw_card(ax, xy, width, height, title, lines, color, line_gap=0.075):
+    card = FancyBboxPatch(
+        xy,
+        width,
+        height,
+        boxstyle="round,pad=0.018,rounding_size=0.025",
+        linewidth=0.8,
+        edgecolor=color,
+        facecolor="#F8FAFC",
+    )
+    ax.add_patch(card)
+    ax.text(xy[0] + 0.04, xy[1] + height - 0.08, title, ha="left", va="top", fontsize=7.5, fontweight="bold")
+    for idx, line in enumerate(lines):
+        ax.text(xy[0] + 0.04, xy[1] + height - 0.16 - idx * line_gap, line, ha="left", va="top", fontsize=6.7)
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Plot VeriSeek SciFact benchmark results.")
+    parser = argparse.ArgumentParser(description="Plot VeriSeek public SciFact benchmark summary.")
     parser.add_argument(
         "--source",
         default="assets/veriseek_scifact_benchmark_source.tsv",
-        help="TSV source data with SciFact benchmark metrics.",
+        help="TSV source data with public VeriSeek benchmark metrics.",
     )
     parser.add_argument(
         "--output_prefix",
@@ -50,11 +66,15 @@ def main():
     args = parser.parse_args()
 
     rows = read_rows(Path(args.source))
+    labels = ["Base", "RL-only", "SFT", "VeriSeek\nSFT+RL"]
+    colors = [PALETTE["base"], PALETTE["rl"], PALETTE["sft"], PALETTE["sft_rl"]]
+    answer = [as_float(row, "answer_accuracy") for row in rows]
+    evidence = [as_float(row, "evidence_f1") for row in rows]
+
     sft = next(row for row in rows if row["training_path"] == "SFT")
-    old = next(row for row in rows if row["training_path"] == "SFT+RL old")
-    gated = [row for row in rows if row["training_path"] == "SFT+RL gated n=4"]
-    gated.sort(key=lambda row: int(row["checkpoint"]))
-    best = gated[-1]
+    sft_rl = next(row for row in rows if row["training_path"] == "SFT+RL")
+    delta_acc = as_float(sft_rl, "answer_accuracy") - as_float(sft, "answer_accuracy")
+    delta_ev = as_float(sft_rl, "evidence_f1") - as_float(sft, "evidence_f1")
 
     mpl.rcParams.update(
         {
@@ -72,106 +92,92 @@ def main():
         }
     )
 
-    fig = plt.figure(figsize=(7.1, 3.9), constrained_layout=True)
-    gs = fig.add_gridspec(2, 3, width_ratios=[1.4, 1.1, 1.0], height_ratios=[1, 1])
+    fig = plt.figure(figsize=(7.4, 3.65), constrained_layout=True)
+    gs = fig.add_gridspec(2, 3, width_ratios=[1.35, 1.15, 1.0], height_ratios=[1, 1])
     ax_a = fig.add_subplot(gs[:, 0])
-    ax_b = fig.add_subplot(gs[0, 1])
-    ax_c = fig.add_subplot(gs[1, 1])
-    ax_d = fig.add_subplot(gs[:, 2])
+    ax_b = fig.add_subplot(gs[:, 1])
+    ax_c = fig.add_subplot(gs[:, 2])
 
-    # Panel A: paired endpoint comparison.
-    labels = ["SFT", "Old\nSFT+RL", "Gated n=4\nstep 200"]
-    acc_values = [as_float(sft, "label_accuracy"), as_float(old, "label_accuracy"), as_float(best, "label_accuracy")]
-    ev_values = [as_float(sft, "evidence_f1"), as_float(old, "evidence_f1"), as_float(best, "evidence_f1")]
     x = range(len(labels))
-    width = 0.34
-    ax_a.bar([i - width / 2 for i in x], acc_values, width, color=PALETTE["accent"], label="Label accuracy")
-    ax_a.bar([i + width / 2 for i in x], ev_values, width, color=PALETTE["gated"], label="Evidence F1")
-    ax_a.set_ylim(0.25, 0.86)
-    ax_a.set_ylabel("SciFact dev score")
+    ax_a.bar(x, answer, color=colors, width=0.64)
+    ax_a.set_ylim(0, 0.86)
+    ax_a.set_ylabel("Answer accuracy")
     ax_a.set_xticks(list(x), labels)
     ax_a.grid(axis="y", color=PALETTE["grid"], linewidth=0.6, alpha=0.7)
-    ax_a.legend(loc="upper left", ncols=1)
-    for i, (acc, ev) in enumerate(zip(acc_values, ev_values)):
-        ax_a.text(i - width / 2, acc + 0.012, f"{acc:.3f}", ha="center", va="bottom", fontsize=6.5)
-        ax_a.text(i + width / 2, ev + 0.012, f"{ev:.3f}", ha="center", va="bottom", fontsize=6.5)
-
-    delta_ev = as_float(best, "evidence_f1") - as_float(sft, "evidence_f1")
-    delta_acc = as_float(best, "label_accuracy") - as_float(sft, "label_accuracy")
+    ax_a.set_title("SciFact answer prediction", loc="left", fontsize=8, fontweight="bold")
+    for idx, value in enumerate(answer):
+        ax_a.text(idx, value + 0.016, f"{value:.3f}", ha="center", va="bottom", fontsize=6.8)
     ax_a.annotate(
-        f"+{delta_acc:.3f} acc\n+{delta_ev:.3f} evidence F1",
-        xy=(2, as_float(best, "label_accuracy")),
-        xytext=(1.15, 0.84),
-        arrowprops={"arrowstyle": "-", "color": PALETTE["text"], "linewidth": 0.7},
+        "best final model",
+        xy=(3, answer[3]),
+        xytext=(2.15, 0.84),
+        arrowprops={"arrowstyle": "-", "linewidth": 0.8, "color": PALETTE["text"]},
         ha="left",
-        va="top",
+        va="center",
         fontsize=7,
     )
 
-    # Panel B: gated checkpoint trajectory for answer accuracy.
-    steps = [int(row["checkpoint"]) for row in gated]
-    acc = [as_float(row, "label_accuracy") for row in gated]
-    ev = [as_float(row, "evidence_f1") for row in gated]
-    ax_b.plot(steps, acc, marker="o", color=PALETTE["accent"], linewidth=1.6, markersize=4)
-    ax_b.axhline(as_float(sft, "label_accuracy"), color=PALETTE["sft"], linewidth=1.0, linestyle="--")
-    ax_b.set_ylim(0.76, 0.805)
-    ax_b.set_ylabel("Label accuracy")
-    ax_b.set_xticks(steps)
+    ax_b.bar(x, evidence, color=colors, width=0.64)
+    ax_b.set_ylim(0, 0.46)
+    ax_b.set_ylabel("Evidence F1")
+    ax_b.set_xticks(list(x), labels)
     ax_b.grid(axis="y", color=PALETTE["grid"], linewidth=0.6, alpha=0.7)
-    ax_b.text(51, as_float(sft, "label_accuracy") + 0.001, "SFT baseline", color=PALETTE["sft"], fontsize=6.5)
+    ax_b.set_title("Verifiable evidence grounding", loc="left", fontsize=8, fontweight="bold")
+    for idx, value in enumerate(evidence):
+        label = f"{value:.3f}" if value > 0 else "n/a"
+        ax_b.text(idx, value + (0.015 if value > 0 else 0.018), label, ha="center", va="bottom", fontsize=6.5)
 
-    # Panel C: gated checkpoint trajectory for evidence F1.
-    ax_c.plot(steps, ev, marker="o", color=PALETTE["gated"], linewidth=1.6, markersize=4)
-    ax_c.axhline(as_float(sft, "evidence_f1"), color=PALETTE["sft"], linewidth=1.0, linestyle="--")
-    ax_c.set_ylim(0.36, 0.415)
-    ax_c.set_ylabel("Evidence F1")
-    ax_c.set_xlabel("RL step")
-    ax_c.set_xticks(steps)
-    ax_c.grid(axis="y", color=PALETTE["grid"], linewidth=0.6, alpha=0.7)
-    ax_c.text(51, as_float(sft, "evidence_f1") + 0.0015, "SFT baseline", color=PALETTE["sft"], fontsize=6.5)
-
-    # Panel D: unsupported rate moves toward better calibrated evidence use.
-    unsupported = [
-        as_float(sft, "unsupported_answer_rate"),
-        as_float(old, "unsupported_answer_rate"),
-        as_float(best, "unsupported_answer_rate"),
-    ]
-    colors = [PALETTE["sft"], PALETTE["old"], PALETTE["gated"]]
-    ax_d.barh(labels, unsupported, color=colors, height=0.55)
-    ax_d.invert_yaxis()
-    ax_d.set_xlim(0.35, 0.60)
-    ax_d.set_xlabel("Unsupported-answer rate")
-    ax_d.grid(axis="x", color=PALETTE["grid"], linewidth=0.6, alpha=0.7)
-    for y, value in enumerate(unsupported):
-        ax_d.text(value + 0.006, y, f"{value:.3f}", va="center", ha="left", fontsize=6.5)
-    ax_d.annotate(
-        "Lower is better",
-        xy=(as_float(best, "unsupported_answer_rate"), 2),
-        xytext=(0.505, 2.32),
-        arrowprops={"arrowstyle": "-", "color": PALETTE["text"], "linewidth": 0.7},
+    ax_c.axis("off")
+    ax_c.text(
+        0.0,
+        0.95,
+        "Benchmark",
         ha="left",
-        va="center",
-        fontsize=6.7,
+        va="top",
+        fontsize=8,
+        fontweight="bold",
+        color=PALETTE["text"],
+    )
+    draw_card(
+        ax_c,
+        (0.0, 0.65),
+        0.96,
+        0.24,
+        "SciFact dev",
+        ["n = 300 claims"],
+        PALETTE["grid"],
+    )
+    draw_card(
+        ax_c,
+        (0.0, 0.33),
+        0.96,
+        0.25,
+        "VeriSeek SFT+RL",
+        [f"+{delta_acc:.3f} answer acc", f"+{delta_ev:.3f} evidence F1", "vs. SFT baseline"],
+        PALETTE["sft_rl"],
+    )
+    ax_c.text(
+        0.0,
+        0.08,
+        "Reward: format gate + label correctness\n+ evidence overlap + concise evidence.",
+        ha="left",
+        va="bottom",
+        fontsize=6.8,
+        color="#4B5563",
     )
 
-    for label, ax in zip(["a", "b", "c", "d"], [ax_a, ax_b, ax_c, ax_d]):
-        ax.text(-0.16, 1.05, label, transform=ax.transAxes, fontweight="bold", fontsize=9)
+    for label, ax in zip(["a", "b", "c"], [ax_a, ax_b, ax_c]):
+        ax.text(-0.16, 1.04, label, transform=ax.transAxes, fontweight="bold", fontsize=9)
 
     fig.suptitle(
-        "Evidence-aware GRPO improves SciFact grounding after SFT",
+        "VeriSeek SFT+RL gives the strongest evidence-grounded SciFact QA result",
         x=0.01,
         ha="left",
-        fontsize=9,
+        fontsize=9.5,
         fontweight="bold",
         color=PALETTE["text"],
     )
 
-    legend_handles = [
-        Patch(facecolor=PALETTE["sft"], label="SFT baseline"),
-        Patch(facecolor=PALETTE["old"], label="Old SFT+RL negative control"),
-        Patch(facecolor=PALETTE["gated"], label="Gated n=4 SFT+RL"),
-    ]
-    fig.legend(handles=legend_handles, loc="lower center", bbox_to_anchor=(0.5, -0.03), ncols=3)
     save_publication_figure(fig, Path(args.output_prefix))
 
 
