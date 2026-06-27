@@ -39,7 +39,7 @@ Base and RL-only are reported as prefix-constrained label diagnostics because th
 
 **VeriSeek SFT+RL** gives the strongest public SciFact dev result among the four evaluated training paths:
 
-![VeriSeek SciFact benchmark](../assets/veriseek_scifact_benchmark.svg)
+![VeriSeek SciFact benchmark](../assets/veriseek_scifact_benchmark.png)
 
 | Model | Training Path | SciFact Answer Acc | SciFact Evidence F1 | Evaluation Note |
 |---|---|---:|---:|---|

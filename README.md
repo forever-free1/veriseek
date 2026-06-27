@@ -45,7 +45,7 @@ SUPPORTS / REFUTES / NOT_ENOUGH_INFO
 
 On SciFact dev (`n = 300`), the final public model, **VeriSeek SFT+RL**, gives the strongest answer accuracy and evidence grounding among the four training paths.
 
-![VeriSeek SciFact benchmark](assets/veriseek_scifact_benchmark.svg)
+![VeriSeek SciFact benchmark](assets/veriseek_scifact_benchmark.png)
 
 | Model | Training Path | SciFact Answer Acc | SciFact Evidence F1 | Evaluation Note |
 |---|---|---:|---:|---|
@@ -260,8 +260,6 @@ python scripts/plot_veriseek_method.py
 Outputs:
 
 ```text
-assets/veriseek_scifact_benchmark.svg
-assets/veriseek_scifact_benchmark.pdf
 assets/veriseek_scifact_benchmark.png
 assets/veriseek_method_overview.svg
 assets/veriseek_method_overview.pdf

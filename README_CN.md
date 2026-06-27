@@ -45,7 +45,7 @@ SUPPORTS / REFUTES / NOT_ENOUGH_INFO
 
 在 SciFact dev（`n = 300`）上，最终公开模型 **VeriSeek SFT+RL** 在四条训练路径中取得了最好的答案准确率和证据 grounding 指标。
 
-![VeriSeek SciFact benchmark](assets/veriseek_scifact_benchmark.svg)
+![VeriSeek SciFact benchmark](assets/veriseek_scifact_benchmark.png)
 
 | Model | Training Path | SciFact Answer Acc | SciFact Evidence F1 | Evaluation Note |
 |---|---|---:|---:|---|
@@ -260,8 +260,6 @@ python scripts/plot_veriseek_method.py
 输出：
 
 ```text
-assets/veriseek_scifact_benchmark.svg
-assets/veriseek_scifact_benchmark.pdf
 assets/veriseek_scifact_benchmark.png
 assets/veriseek_method_overview.svg
 assets/veriseek_method_overview.pdf
