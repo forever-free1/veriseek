@@ -97,6 +97,36 @@ otherwise:
 
 The reward uses only label correctness, token-level evidence overlap, output format, and concise evidence. See [docs/reward_design.md](docs/reward_design.md).
 
+## RL Training Pain Points: Cold Start and Reward Sparsity
+
+The RL-only path (VeriSeek RL-only) achieves only +0.01 over the untrained base model—essentially zero effective gain. Two tightly coupled problems explain why.
+
+### Cold Start
+
+The base Qwen3-4B-Thinking model has never seen the `<answer>`/`<evidence>` XML protocol. Without SFT warmup, the model has no prior that outputs must conform to this structure. During RL rollouts, the model generates free-form reasoning text that almost never happens to match the required XML format.
+
+Concrete evidence: the RL-only format success rate is **0.0**. The model never produces a valid output under the VeriSeek protocol across any training or evaluation step.
+
+### Reward Sparsity
+
+The SciFact reward uses a hard format gate: invalid format → R = 0, unconditionally. There is no partial credit, no distance-to-format reward, no shaping signal. When every rollout returns R = 0, the reward landscape is flat.
+
+### Why GRPO Yields Zero Effective Gain
+
+GRPO computes advantages by comparing sampled responses within a group. When all responses for a prompt receive R = 0, the group-relative advantage A is zero for every token. The policy gradient ∇ log π(a|s) · A becomes identically zero—GRPO has no signal to differentiate good from bad behavior. The model drifts only through stochastic noise, producing no meaningful format acquisition or accuracy improvement.
+
+The answer accuracy numbers for Base (0.553) and RL-only (0.563) are both measured through prefix-constrained label extraction, not through the VeriSeek XML protocol. Neither model reliably follows the evidence protocol, so their evidence F1 is not reported as a comparable strict grounding score.
+
+### How SFT+RL Avoids Both Problems
+
+SFT provides format-level behavioral cloning that lifts the format success rate to ~0.99 before RL begins. This gives RL a dense reward landscape where evidence quality and answer correctness provide discriminative signal. The RL phase then optimizes fine-grained evidence selection and reduces unsupported guesses:
+
+```text
+Format success rate:  0.0  → 0.993  (after SFT)
+Unsupported rate:     0.467 → 0.413  (after RL)
+Evidence F1:          0.376 → 0.406  (after RL)
+```
+
 ## Repository Map
 
 ```text

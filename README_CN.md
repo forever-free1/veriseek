@@ -97,6 +97,36 @@ otherwise:
 
 这个 reward 只使用标签正确性、token-level evidence overlap、输出格式和证据简洁性。详见 [docs/reward_design.md](docs/reward_design.md)。
 
+## RL 训练的最痛点：冷启动与奖励稀疏
+
+RL-only 路径（VeriSeek RL-only）相比未训练的 base model 仅提升 +0.01，本质上是零有效增益。两个紧密耦合的问题共同导致了这一结果。
+
+### 冷启动
+
+Qwen3-4B-Thinking base model 从未见过 `<answer>`/`<evidence>` 这套 XML 协议。没有 SFT 预热，模型完全不知道输出应当遵循这一结构。在 RL rollout 中，模型生成的是自由形式的推理文本，几乎不可能偶然命中所需的 XML 格式。
+
+直接证据：RL-only 的 format success rate 为 **0.0**。模型在整个训练和评测过程中，从未产生过一个符合 VeriSeek 协议的有效输出。
+
+### 奖励稀疏
+
+SciFact reward 使用硬格式门槛：格式无效 → R 无条件为 0。没有部分得分，没有格式距离奖励，没有任何塑形信号。当所有 rollout 都返回 R=0 时，奖励地貌是一片平地。
+
+### 为什么 GRPO 有效增益为零
+
+GRPO 通过在组内比较采样响应来计算优势（advantage）。当一个 prompt 的所有响应都得到 R=0 时，每个 token 的组内相对优势 A 全为零。策略梯度 ∇ log π(a|s) · A 恒等于零——GRPO 没有任何信号来区分好坏行为。模型仅在随机噪声中漂移，无法产生有意义的格式学习或准确率提升。
+
+Base（0.553）和 RL-only（0.563）的答案准确率均通过 prefix-constrained label extraction 测量，而非通过 VeriSeek XML 协议。两个模型都不能稳定遵循 evidence 协议，因此它们的 evidence F1 不作为严格可比的 grounding 分数报告。
+
+### SFT+RL 如何规避这两个问题
+
+SFT 通过行为克隆将 format success rate 提升至 ~0.99，为 RL 提供了密集的奖励地貌，使证据质量和答案正确性能够提供可区分的信号。RL 阶段则进一步优化证据选择的精细度，并减少无根据的猜测：
+
+```text
+Format success rate:  0.0  → 0.993  (SFT 之后)
+Unsupported rate:     0.467 → 0.413  (RL 之后)
+Evidence F1:          0.376 → 0.406  (RL 之后)
+```
+
 ## 仓库结构
 
 ```text
