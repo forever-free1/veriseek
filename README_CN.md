@@ -1,6 +1,6 @@
 # VeriSeek：基于 Qwen3-4B 的科学问答证据寻址训练
 
-[English README](README.md)
+[English README](README.md) | [掘金博客：从 SFT 到 GRPO——把 Qwen3-4B 训练成会找证据的科学问答模型](https://juejin.cn/post/7657129096330854451)
 
 VeriSeek 是一个小型、可复现的科学问答 evidence grounding 项目。它要求模型不仅给出答案，还要给出可检查的证据。项目唯一公开默认 base model 是：
 

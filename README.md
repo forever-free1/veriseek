@@ -1,6 +1,6 @@
 # VeriSeek: Evidence-Seeking Scientific QA With Qwen3-4B
 
-[中文说明](README_CN.md)
+[中文说明](README_CN.md) | [中文博客：从 SFT 到 GRPO——把 Qwen3-4B 训练成会找证据的科学问答模型](https://juejin.cn/post/7657129096330854451)
 
 VeriSeek is a compact, reproducible project for training scientific QA models to answer with auditable evidence. The public/default base model is:
 
