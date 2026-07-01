@@ -99,49 +99,47 @@ The reward uses only label correctness, token-level evidence overlap, output for
 
 ## RL Training Pain Points: Cold Start and Reward Sparsity
 
-The RL-only path (VeriSeek RL-only) achieves only +0.01 over the untrained base model. It is not that the RL optimizer failed — it is that the reward landscape carried no usable signal. Understanding why requires looking past "format is wrong" into the structure of the reward function and how GRPO consumes reward.
+The RL-only path gave us +0.01 over the base model. When we first saw this number, the natural question was: what went wrong?
 
-### The Real Problem: Zero-Variance Reward, Not Just Sparse Reward
+### The Signal Problem Beneath the Surface
 
-RL training on structured-output tasks faces a risk that ArenaRL terms **discriminative collapse**: when all sampled outputs receive similar scores, the reward loses its ability to tell good from bad. For LLM-as-judge settings, ArenaRL observes that point-wise scoring compresses rewards into a narrow band (e.g., 0.8–0.9) where the within-group variance is no larger than the judge's random noise — the SNR drops so low that reward differences become meaningless.
+ArenaRL's work on open-ended agent training pointed us toward a useful concept — **discriminative collapse**. In LLM-as-judge settings, as the policy improves and outputs become more similar, point-wise reward scores compress into a narrow band (0.8–0.9 on a 0–1 scale). The within-group variance shrinks until it is indistinguishable from the judge's own sampling noise. At that point, the reward signal drowns and GRPO's advantage computation has nothing real to work with.
 
-VeriSeek's RL-only path hits an even more extreme version of this. The problem is not that scores are bunched in a narrow range — it is that **every rollout scores exactly 0**. There is no variance at all.
+Our RL-only run hit a harder version of the same pattern. Every rollout scored R = 0, exactly. Zero variance across every group, every step. The SNR never had a chance.
 
-### The Hard Format Gate as a Signal Killer
+### How the Format Gate Created a Flat Landscape
 
-The SciFact reward uses a hard format gate: invalid format → R = 0, unconditionally (see [Reward Design](#reward-design)). No partial credit, no edit-distance shaping, no incremental reward for getting closer to the correct XML structure. In principle, this keeps the reward clean and gamed. In practice, it creates a binary cliff: the model either produces valid XML and gets a real score, or it does not and gets zero.
+The SciFact reward enforces a hard format gate: invalid format → R = 0 (see [Reward Design](#reward-design)). We kept it this way deliberately — partial credit or distance-based shaping would have introduced their own pathologies, rewarding almost-correct XML that still broke downstream parsing. What we did not fully appreciate at the time was the interaction between this gate and a cold-started policy.
 
-The Qwen3-4B-Thinking base model has never seen the `<answer>`/`<evidence>` protocol. During GRPO rollouts, the model generates free-form chain-of-thought — text that is syntactically reasonable but structurally wrong. Across the entire RL-only training run, **format success rate remains 0.0**. Every rollout, every step, returns R = 0.
+The Qwen3-4B-Thinking base model has never seen `<answer>`/`<evidence>` tags. Its rollouts are coherent chain-of-thought — reasonable text, wrong structure. **Format success rate: 0.0, sustained across the full training run.** Every rollout, every step, R = 0.
 
-### Why GRPO Specifically Cannot Escape This Trap
+### Why GRPO Had Nothing to Work With
 
-GRPO computes advantages through group-relative normalization: for a group of N responses to the same prompt, each response's advantage A_i = (R_i - μ_group) / σ_group. This design choice — comparing responses within a group rather than against an absolute baseline — is conceptually aligned with ArenaRL's finding that relative comparison is more robust than absolute scoring for open-ended tasks.
+GRPO normalizes advantages within each response group: A_i = (R_i - μ_group) / σ_group. ArenaRL's central insight — that relative comparison within a group is more robust than absolute scoring — is the reason this normalization exists. Group-relative advantage is precisely GRPO's answer to noisy or miscalibrated rewards.
 
-But group-relative normalization has a hard prerequisite: **the group must have meaningful reward spread**. When all N responses score R = 0:
+But the same mechanism has a dependency it cannot function without: the group needs reward spread. When all N responses in a group score R = 0:
 
 - μ_group = 0, σ_group = 0
-- A_i = 0/0 → every advantage is exactly 0
-- ∇ log π(a|s) · A ≡ 0 for every token in every response
+- A_i = 0/0 → clamped to 0
+- ∇ log π(a|s) · A ≡ 0 for every token
 
-The policy gradient vanishes identically. There is no learning signal — not a weak one, not a noisy one, but literally zero. The model drifts through stochastic sampling noise alone, producing no improvement in format acquisition, answer accuracy, or evidence grounding.
+The policy gradient is identically zero. The model drifts on sampling noise alone through the entire training run. No format acquisition, no accuracy improvement, no evidence grounding.
 
-### The SFT Warmup: Restoring Signal to the Reward Landscape
+### What Changed With SFT Warmup
 
-SFT breaks the deadlock through behavioral cloning: it teaches the output protocol directly from supervised examples, lifting format success rate to ~0.99 **before RL ever starts**. This is not merely "learning the format" — it is transforming the reward landscape from a flat zero-plane into terrain with discriminative relief.
-
-Once format is reliable, the reward function actually executes for nearly every rollout. Evidence quality and answer correctness now create real variance across samples:
+SFT gave the model the output protocol before RL touched it. Format success rate jumped to 0.993 from supervised examples alone. Once format was reliable, the reward function actually executed on nearly every rollout — and when it did, evidence quality and answer correctness created real variance across the group:
 
 ```text
-Format success rate:  0.0  → 0.993  (after SFT — enables reward)
-Unsupported rate:     0.467 → 0.413  (after RL  — reward-driven)
-Evidence F1:          0.376 → 0.406  (after RL  — reward-driven)
+Format success rate:  0.0  → 0.993  (after SFT)
+Unsupported rate:     0.467 → 0.413  (after RL)
+Evidence F1:          0.376 → 0.406  (after RL)
 ```
 
-The RL phase delivers real gains — but only because SFT first established a reward landscape with sufficient SNR for group-relative optimization to function.
+The RL phase did what it is supposed to: it differentiated better evidence selections from worse ones, and it pushed down unsupported guesses. But none of this was possible until the reward landscape had actual terrain to navigate.
 
-### The Deeper Lesson
+### Looking Back
 
-The RL-only failure is not about GRPO being a bad algorithm or cold start being a hard problem. It is about a fundamental constraint: **no optimization algorithm can improve what it cannot measure**. A reward function with zero output variance produces zero learning signal, regardless of how many rollouts GRPO samples or how carefully hyperparameters are tuned. The hard format gate is the right design choice — it keeps the reward clean — but it also means that some amount of supervised format bootstrapping is not a convenience. It is a necessity.
+The RL-only result does not say that GRPO is fragile or that cold start is hard. It says something simpler: the group-relative mechanism that makes GRPO robust to reward noise has a hard floor — zero variance in, zero gradient out. A hard format gate keeps the reward clean, and we would make the same choice again. But it also means the policy needs to reach a minimum viable format success rate before reinforcement can begin, and the cleanest way to get there is supervised imitation.
 
 ## Repository Map
 
